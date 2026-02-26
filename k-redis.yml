@@ -1,0 +1,41 @@
+# redis.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:alpine
+        command: ["redis-server", "--appendonly", "yes"]
+        ports:
+        - containerPort: 6379
+        volumeMounts:
+        - mountPath: /data
+          name: redis-data
+      volumes:
+      - name: redis-data
+        persistentVolumeClaim:
+          claimName: redis-data-pvc
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis # <-- This exact name is what Python uses to find the DB!
+spec:
+  selector:
+    app: redis
+  ports:
+    - protocol: TCP
+      port: 6379
+      targetPort: 6379

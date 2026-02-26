@@ -1,0 +1,27 @@
+# worker.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: render-worker
+spec:
+  replicas: 1 # Scale this up later for massive parallel rendering!
+  selector:
+    matchLabels:
+      app: worker
+  template:
+    metadata:
+      labels:
+        app: worker
+    spec:
+      containers:
+      - name: worker
+        image: render-worker:latest
+        imagePullPolicy: Never # Forces K8s to use your local build
+        command: ["rq", "worker", "render_queue", "--url", "redis://redis:6379"]
+        volumeMounts:
+        - mountPath: /render_data
+          name: shared-storage
+      volumes:
+      - name: shared-storage
+        persistentVolumeClaim:
+          claimName: render-data-pvc

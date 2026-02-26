@@ -1,0 +1,47 @@
+services:
+  # 1. Message Broker (Redis)
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - ./redis_data:/data
+  # 2. Manager (API)
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./shared-storage:/render_data
+      - ./main.py:/app/main.py
+      - ./tasks.py:/app/tasks.py
+    depends_on:
+      - redis
+  # 3. Worker (Listens to Redis and processes tasks)
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    volumes:
+      - ./shared-storage:/render_data
+      - ./tasks.py:/app/tasks.py
+    depends_on:
+      - redis
+  # 4. React FrontEnd
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    volumes:
+      # mount frontend folder so we get live-reloading
+      - ./frontend:/app
+      # create anonymous volume for node_modules
+      - /app/node_modules
+    depends_on:
+      - api
+
