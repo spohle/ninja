@@ -21,7 +21,7 @@ spec:
         - containerPort: 8000
         command: ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
         volumeMounts:
-        - mountPath: /render_data
+        - mountPath: /render_data 
           name: shared-storage
       # --- FIX: volumes moved out of the container list and under spec ---
       volumes:

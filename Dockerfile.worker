@@ -10,7 +10,8 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip3 install --no-cache-dir -r requirements.txt
 
-COPY . .
+COPY main.py .
+COPY tasks.py .
 
 # start the rq worker process
 CMD ["rq", "worker", "--url", "redis://redis:6379", "render_queue"]
