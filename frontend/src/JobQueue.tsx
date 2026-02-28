@@ -94,6 +94,19 @@ export default function JobQueue() {
       }
     };
 
+  const handleUpload = async(file) => {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const response = await fetch("http://localhost:8000/upload", {
+      method: "POST",
+      body: formData,
+    });
+
+    const data = await response.json();
+    console.log("File uploaded to cluster: ", data.path);
+  };
+
   return (
     <div className="mt-6">
       <h2 className="text-xl font-semibold text-gray-300 mb-4">Active Queue</h2>

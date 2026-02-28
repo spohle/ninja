@@ -3,6 +3,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi import UploadFile, File
 from redis import Redis
 from rq import Queue
 from rq.job import Job
@@ -34,6 +35,16 @@ class RenderJob(BaseModel):
     scene_file: str
     start_frame: int
     end_frame: int
+
+
+@app.post("/upload")
+async def upload_blend_file(file: UploadFile = File(...)):
+    dest_path = Path("/render_data") / file.filename
+
+    with dest_path.open("wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    return {"status": "success", "filename": file.filename}
 
 @app.get("/renders/{scene_name}/{job_id}/log")
 async def get_render_log(scene_name: str, job_id: str) -> dict:

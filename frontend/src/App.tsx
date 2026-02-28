@@ -5,6 +5,7 @@ import './App.css'
 
 import JobQueue from './JobQueue';
 import JobSubmitter from './JobSubmitter.tsx';
+import Uploader from './Uploader.tsx';
 
 function App() {
   return (
@@ -24,6 +25,8 @@ function App() {
             <p className="text-gray-400 text-sm font-medium">System Online</p>
           </div>
         </div>
+
+        <Uploader />
         
         {/* The Control Center */}
         <JobSubmitter />
