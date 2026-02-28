@@ -9,6 +9,7 @@ from rq import Queue
 from rq.job import Job
 from pydantic import BaseModel
 import shutil
+import datetime
 
 from tasks import execute_render
 
@@ -37,8 +38,23 @@ class RenderJob(BaseModel):
     end_frame: int
 
 
+@app.get("/assets")
+async def list_assets():
+    storage_path = Path("/render_data")
+    if not storage_path.exists():
+        return {"assets": []}
+
+    files = [f for f in storage_path.glob("*.blend")]
+    names = [f.name for f in files]
+    mods = [datetime.datetime.fromtimestamp(f.stat().st_mtime).astimezone() for f in files]
+
+    return {"assets": zip(names, mods)}
+
 @app.post("/upload")
 async def upload_blend_file(file: UploadFile = File(...)):
+    if not file or not file.filename:
+        return {"status": "error", "filename": ""}
+
     dest_path = Path("/render_data") / file.filename
 
     with dest_path.open("wb") as buffer:
