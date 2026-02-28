@@ -190,8 +190,8 @@ export default function JobSubmitter() {
             disabled={isSubmitting || !isFormValid}
             className={`px-8 py-1 rounded font-semibold text-white transition-colors duration-200 h-[30px]
               ${(isSubmitting || !isFormValid)
-                ? 'bg-slate-700 cursor-not-allowed text-slate-400' 
-                : 'bg-slate-600 hover:bg-sky-500'}`}
+                ? 'bg-orange-400 cursor-not-allowed text-slate-400' 
+                : 'bg-green-400 hover:bg-sky-500'}`}
           >
             {isSubmitting ? 'Sending...' : `Submit ${rows.length > 0 ? rows.length : ''} to Queue`}
           </button>
