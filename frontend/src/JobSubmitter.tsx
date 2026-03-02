@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 // 1. Updated Interface to allow empty strings while typing
 interface JobFormRow {
   id: string;
+  projectName: string;
   sceneFile: string;
   startFrame: number | '';
   endFrame: number | '';
@@ -12,12 +13,30 @@ export default function JobSubmitter() {
   const [rows, setRows] = useState<JobFormRow[]>([]);
   const [status, setStatus] = useState({ type: '', message: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [projects, setProjects] = useState<string[]>([]);
+
+  // fetch projects from the endpoint
+  useEffect(() => {
+    const fetchProjects = async () => {
+      try {
+        const res = await fetch('http://localhost:8000/projects');
+        const data = await res.json();
+        const projectNames = Object.keys(data.projects || {}).map(p => p.replace('.zip', ''));
+        setProjects(projectNames);
+      } catch (err) {
+        console.error("Failed to load projects: ", err);
+      }
+    };
+
+    fetchProjects();
+  }, []);
 
   const addRow = () => {
     setRows([
       ...rows,
       {
         id: crypto.randomUUID(),
+        projectName: projects.length > 0 ? projects[0] : '',
         sceneFile: '',
         startFrame: 1,
         endFrame: 12,
@@ -39,14 +58,13 @@ export default function JobSubmitter() {
 
   // 2. The Real-Time Validation Engine
   const isFormValid = rows.length > 0 && rows.every(row => {
-    // Check 1: Scene name is not empty
-    if (!row.sceneFile.trim()) return false;
-    // Check 2: Frames are not empty
-    if (row.startFrame === '' || row.endFrame === '') return false;
-    // Check 3: End frame is not less than start frame
-    if (row.endFrame < row.startFrame) return false;
-    
-    return true; // Row passes all tests
+    return (
+        row.projectName.trim() !== '' && // New check
+        row.sceneFile.trim() !== '' &&
+        row.startFrame !== '' && 
+        row.endFrame !== '' &&
+        row.endFrame >= row.startFrame
+      );
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -64,7 +82,8 @@ export default function JobSubmitter() {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            scene_file: `${row.sceneFile}.blend`,
+            project: `${row.projectName}`,
+            scene_file: `${row.sceneFile}`,
             start_frame: row.startFrame,
             end_frame: row.endFrame,
           }),
@@ -97,9 +116,24 @@ export default function JobSubmitter() {
         {rows.map((row, index) => (
           <div key={row.id} className="flex flex-wrap items-end gap-2 p-3 bg-gray-900/50 rounded-md border border-gray-700/50">
             
+            {/* Project Selection Dropdown */}
+            <div className="flex-1 max-w-[150px]">
+              {index === 0 && <label className="block text-sm font-medium text-gray-400 mb-1">Project</label>}
+              <select
+                value={row.projectName}
+                onChange={(e) => updateRow(row.id, 'projectName', e.target.value)}
+                className="w-full h-[34px] bg-gray-900 border border-gray-600 rounded px-3 text-sm text-white focus:border-blue-500 outline-none"
+              >
+                <option value="" disabled>Select a project...</option>
+                {projects.map(p => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              </select>
+            </div>  
+
             <div className="flex-1 min-w-[200px]">
               {index === 0 && (
-                <label className="block text-sm font-medium text-gray-400 mb-1">Scene File Name</label>
+                <label className="block text-sm font-medium text-gray-400 mb-1">Scene Name</label>
               )}
               
               <div 
@@ -114,9 +148,9 @@ export default function JobSubmitter() {
                   <input
                     id={`scene-input-${row.id}`}
                     type="text"
-                    value={row.sceneFile}
+                    //value={row.sceneFile}
                     onChange={(e) => {
-                      const cleanName = e.target.value.replace(/\.blend$/i, '');
+                      const cleanName = e.target.value.replace(/\.zip/i, '');
                       updateRow(row.id, 'sceneFile', cleanName);
                     }}
                     required
@@ -124,9 +158,6 @@ export default function JobSubmitter() {
                     placeholder="sequence_01"
                   />
                 </div>
-                <span className="text-gray-500 select-none pointer-events-none text-sm">
-                  .blend
-                </span>
               </div>
             </div>
 

@@ -118,7 +118,7 @@ export default function JobQueue() {
           <thead className="bg-gray-700 text-gray-300">
             <tr>
               <th className="px-4 py-3">Scene File</th>
-              <th className="px-4 py-3 w-40">Frames</th> {/* Gave Frames a fixed width so the progress bar looks good */}
+              <th className="px-4 py-3 w-40">Frames</th> 
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3">Started</th>
               <th className="px-4 py-3">Finished</th>

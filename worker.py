@@ -4,6 +4,8 @@ from pathlib import Path
 from datetime import datetime
 from rq import get_current_job
 from rq.job import Job
+import zipfile
+import tempfile
 
 def create_named_output_dir(output_dir: str) -> Path | None:
     output_dir_path = Path(output_dir)
@@ -20,26 +22,25 @@ def create_named_output_dir(output_dir: str) -> Path | None:
 
     return final_path
 
-def execute_render(scene_file: str, frames: str):
-    print(f"starting render for {scene_file} (Frames: {frames}...")
+def execute_render(project: str, scene_file: str, frames: list):
+    print(f"starting render for {project}|{scene_file} (Frames: {frames}...")
 
     start_frame, end_frame = frames.split("-")
 
-    # docker-compose mounts the shared folder to /render_data
-    blend_path = f"/render_data/{scene_file}"
+    full_scene_path = Path("/render_data") / project / "scenes" / f"{scene_file}.blend"
+    if not full_scene_path.exists():
+        print(f"Could not find scene file: {full_scene_path}")
+        return(f"Could not find scene file: {full_scene_path}")
 
-    if not os.path.exists(blend_path):
-        error_msg = f"ERROR: {blend_path} not found"
-        print(error_msg)
-        return error_msg
+    output_dir = Path(f"/render_data/output/{project}{scene_file}")
+    output_dir.mkdir(exist_ok=True)
 
-    blend_name = Path(blend_path).stem
-    output_dir = f"/render_data/output/{blend_name}"
-    
-    output_dir_path = create_named_output_dir(output_dir)
+    output_dir_path = create_named_output_dir(str(output_dir))
     output_path = f"{output_dir_path}/frame.####"
 
     os.makedirs(output_dir, exist_ok=True)
+    
+    blend_path = full_scene_path
 
     command = [
         "blender",

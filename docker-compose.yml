@@ -16,18 +16,18 @@ services:
       - "8000:8000"
     volumes:
       - ./shared-storage:/render_data
-      - ./main.py:/app/main.py
-      - ./tasks.py:/app/tasks.py
+      - ./api.py:/app/api.py
+      - ./worker.py:/app/worker.py
     depends_on:
       - redis
-  # 3. Worker (Listens to Redis and processes tasks)
+  # 3. Worker (Listens to Redis and processes worker)
   worker:
     build:
       context: .
       dockerfile: Dockerfile.worker
     volumes:
       - ./shared-storage:/render_data
-      - ./tasks.py:/app/tasks.py
+      - ./worker.py:/app/worker.py
     depends_on:
       - redis
   # 4. React FrontEnd

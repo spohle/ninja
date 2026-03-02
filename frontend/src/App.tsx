@@ -6,7 +6,7 @@ import './App.css'
 import JobQueue from './JobQueue';
 import JobSubmitter from './JobSubmitter.tsx';
 import FileUploader from './Uploader.tsx';
-import AssetList from './AssetList.tsx';
+import ProjectList from './ProjectList.tsx';
 
 function App() {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -22,13 +22,7 @@ function App() {
         
         {/* Header stays full width */}
         <header className="flex items-baseline justify-between mb-8 border-b border-gray-800 pb-4">
-          <h1 className="text-3xl font-bold text-blue-400">Render Farm Dashboard</h1>
-          <button 
-            onClick={() => setIsModalOpen(true)}
-            className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg font-medium transition-colors"
-          >
-            + Upload Asset
-          </button>
+          <h1 className="text-3xl font-bold text-blue-400">Ninja Blender</h1>
         </header>
 
         {/* Main Layout Grid */}
@@ -42,7 +36,16 @@ function App() {
 
           {/* Sidebar: Now on the Right (takes 1/4 width) */}
           <aside className="lg:w-1/6 w-full order-2">
-            <AssetList refreshTrigger={refreshCounter} />
+            <div className="flex-row justify-center space-y-6">
+              <ProjectList refreshTrigger={refreshCounter} onSuccess={handleUploadSuccess} />
+
+              <button 
+                onClick={() => setIsModalOpen(true)}
+                className="bg-blue-400 hover:bg-blue-500 px-4 py-1 rounded-lg font-xs transition-colors"
+              >
+                Upload Project
+              </button>
+            </div>
           </aside>
 
         </div>

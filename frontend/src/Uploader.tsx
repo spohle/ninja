@@ -5,7 +5,7 @@ interface FileUploaderProps {
   onClose: () => void;
 }
 
-const FileUploader = ({ isOpen, onClose }: FileUploaderProps) => {
+const FileUploader = ({ isOpen, onClose, onSuccess }: FileUploaderProps) => {
   const [uploading, setUploading] = useState(false);
   const [status, setStatus] = useState('');
 
@@ -30,6 +30,7 @@ const FileUploader = ({ isOpen, onClose }: FileUploaderProps) => {
         setStatus(`Success! ${file.name} is ready for rendering.`);
         // Optional: Close modal automatically after 2 seconds
         setTimeout(onClose, 2000);
+        onSuccess();
       } else {
         setStatus('Upload failed. Check API logs.');
       }
@@ -51,14 +52,14 @@ const FileUploader = ({ isOpen, onClose }: FileUploaderProps) => {
 
       <div className="relative bg-gray-800 border border-gray-700 rounded-xl shadow-2xl w-full max-w-md p-6">
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-bold text-blue-400">Upload Asset</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl">&times;</button>
+          <h2 className="text-sm font-bold text-blue-400">Upload Project</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-white text-xl">&times;</button>
         </div>
 
         <div className="space-y-4">
           <input 
             type="file" 
-            accept=".blend"
+            accept=".zip"
             onChange={handleUpload} // Now properly connected
             disabled={uploading}
             className="block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700 disabled:opacity-50"

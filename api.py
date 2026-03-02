@@ -10,8 +10,9 @@ from rq.job import Job
 from pydantic import BaseModel
 import shutil
 import datetime
+import zipfile
 
-from tasks import execute_render
+from worker import execute_render
 
 app = FastAPI(title="Render Farm API")
 
@@ -33,32 +34,56 @@ tasks_queue = Queue("render_queue", connection=redis_conn)
 
 # define what a render job looks like
 class RenderJob(BaseModel):
+    project: str
     scene_file: str
     start_frame: int
     end_frame: int
 
 
-@app.get("/assets")
-async def list_assets():
+@app.delete("/projects/{project_name}")
+async def delete_project(project_name: str) -> dict:
+    project_path = Path("/render_data") / f"{project_name}.zip"
+    if not project_path.exists():
+        return {"error": f"Project {project_name} not found!"}
+
+    project_path.unlink()
+
+    project_dir_path = Path("/render_data") / f"{project_name}"
+    if project_dir_path.exists():
+        shutil.rmtree(project_dir_path)
+
+    return {"message": f"Project {project_name} deleted"}
+
+@app.get("/projects")
+async def list_projects():
     storage_path = Path("/render_data")
     if not storage_path.exists():
         return {"assets": []}
 
-    files = [f for f in storage_path.glob("*.blend")]
+    files = [f for f in storage_path.glob("*.zip")]
     names = [f.name for f in files]
     mods = [datetime.datetime.fromtimestamp(f.stat().st_mtime).astimezone() for f in files]
 
-    return {"assets": zip(names, mods)}
+    return {"projects": zip(names, mods)}
 
 @app.post("/upload")
-async def upload_blend_file(file: UploadFile = File(...)):
-    if not file or not file.filename:
+async def upload_project(file: UploadFile = File(...)):
+    if not file or not file.filename or not file.filename.endswith('.zip'):
         return {"status": "error", "filename": ""}
 
     dest_path = Path("/render_data") / file.filename
 
     with dest_path.open("wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
+
+    if dest_path.exists():
+        dest_dir_path = Path("/render_data") / file.filename.replace('.zip', '')
+        if dest_dir_path.exists():
+            shutil.rmtree(dest_dir_path)
+        dest_dir_path.mkdir()
+
+        with zipfile.ZipFile(dest_path, 'r') as zip_ref:
+            zip_ref.extractall(dest_dir_path)
 
     return {"status": "success", "filename": file.filename}
 
@@ -143,7 +168,7 @@ async def get_rendered_frames(scene_name: str, job_id: str) -> dict:
 @app.post("/jobs/submit")
 async def submit_job(job: RenderJob) -> dict:
     frames = f"{job.start_frame}-{job.end_frame}"
-    job_instance = tasks_queue.enqueue(execute_render, job.scene_file, frames, result_ttl=-1)
+    job_instance = tasks_queue.enqueue(execute_render, job.project, job.scene_file, frames, result_ttl=-1)
 
     return {
         "job_id": job_instance.id,
