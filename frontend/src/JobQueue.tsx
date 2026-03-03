@@ -4,6 +4,7 @@ import RenderGalleryModal from './RenderGalleryModal';
 interface Job {
   job_id: string;
   status: string;
+  project: string;
   scene: string;
   frames: string;
   started_at: string | null;
@@ -15,6 +16,7 @@ export default function JobQueue() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedProject, setSelectedProject] = useState('');
   const [selectedScene, setSelectedScene] = useState('');
   const [selectedJobId, setSelectedJobId] = useState('');
   const [currentTime, setCurrentTime] = useState(Date.now());
@@ -76,7 +78,8 @@ export default function JobQueue() {
     return Math.max(0, (end - start) + 1);
   };
 
-  const openGallery = (sceneName: string, jobId: string) => {
+  const openGallery = (project: string, sceneName: string, jobId: string) => {
+    setSelectedProject(project);
     setSelectedScene(sceneName);
     setSelectedJobId(jobId);
     setIsModalOpen(true);
@@ -117,6 +120,7 @@ export default function JobQueue() {
         <table className="w-full text-left text-sm text-gray-400">
           <thead className="bg-gray-700 text-gray-300">
             <tr>
+              <th className="px-4 py-3">Project</th>
               <th className="px-4 py-3">Scene File</th>
               <th className="px-4 py-3 w-40">Frames</th> 
               <th className="px-4 py-3">Status</th>
@@ -144,8 +148,11 @@ export default function JobQueue() {
                 return (
                   <tr key={job.job_id} className="border-t border-gray-700 hover:bg-gray-700/30 transition-colors">
                     <td className="px-4 py-3">
+                      {job.project}
+                    </td>
+                    <td className="px-4 py-3">
                       <button 
-                        onClick={() => openGallery(job.scene, job.job_id)}
+                        onClick={() => openGallery(job.project, job.scene, job.job_id)}
                         className="font-medium text-blue-400 hover:text-blue-300 underline underline-offset-4 decoration-blue-400/30 hover:decoration-blue-300 transition-all text-left"
                         title="Click to view rendered frames"
                       >
@@ -235,6 +242,7 @@ export default function JobQueue() {
       </div>
 
       <RenderGalleryModal 
+        project={selectedProject}
         sceneName={selectedScene} 
         jobId={selectedJobId}
         isOpen={isModalOpen} 

@@ -22,7 +22,7 @@ def create_named_output_dir(output_dir: str) -> Path | None:
 
     return final_path
 
-def execute_render(project: str, scene_file: str, frames: list):
+def execute_render(project: str, scene_file: str, frames: str):
     print(f"starting render for {project}|{scene_file} (Frames: {frames}...")
 
     start_frame, end_frame = frames.split("-")
@@ -32,10 +32,15 @@ def execute_render(project: str, scene_file: str, frames: list):
         print(f"Could not find scene file: {full_scene_path}")
         return(f"Could not find scene file: {full_scene_path}")
 
-    output_dir = Path(f"/render_data/output/{project}{scene_file}")
-    output_dir.mkdir(exist_ok=True)
+    output_dir = Path(f"/render_data/output/{project}/{scene_file}")
+    output_dir.mkdir(exist_ok=True, parents=True)
 
-    output_dir_path = create_named_output_dir(str(output_dir))
+    output_dir_path: Path | None = create_named_output_dir(str(output_dir))
+    if output_dir_path is None:
+        print(f"Failed to create output dir: {output_dir_path}")
+        return(f"Failed to create output dir: {output_dir_path}")
+
+    output_dir_path.mkdir(exist_ok=True)
     output_path = f"{output_dir_path}/frame.####"
 
     os.makedirs(output_dir, exist_ok=True)

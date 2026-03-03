@@ -87,10 +87,10 @@ async def upload_project(file: UploadFile = File(...)):
 
     return {"status": "success", "filename": file.filename}
 
-@app.get("/renders/{scene_name}/{job_id}/log")
-async def get_render_log(scene_name: str, job_id: str) -> dict:
+@app.get("/renders/{project}/{scene_name}/{job_id}/log")
+async def get_render_log(project: str, scene_name: str, job_id: str) -> dict:
     clean_name = scene_name.replace('.blend', '')
-    scene_dir = Path(f"/render_data/output/{clean_name}")
+    scene_dir = Path(f"/render_data/output/{project}/{clean_name}")
 
     if not scene_dir.exists():
         return {"log": f"Scene dir does not exist: {scene_dir}", "status": "pending"}
@@ -135,10 +135,10 @@ async def delete_job(job_id: str):
     return {"status": "success", "message": f"Job {job_id} deleted"}
 
 # new endpoint to get rendered frames for the scene
-@app.get("/renders/{scene_name}/{job_id}")
-async def get_rendered_frames(scene_name: str, job_id: str) -> dict:
+@app.get("/renders/{project}/{scene_name}/{job_id}")
+async def get_rendered_frames(project: str, scene_name: str, job_id: str) -> dict:
     clean_name = scene_name.replace(".blend", "")
-    scene_dir = Path(f"/render_data/output/{clean_name}")
+    scene_dir = Path(f"/render_data/output/{project}/{clean_name}")
 
     if not scene_dir.exists():
         return {"frames": [], "message": f"Scene Dir not found: {scene_dir}"}
@@ -156,9 +156,10 @@ async def get_rendered_frames(scene_name: str, job_id: str) -> dict:
     frames.sort()
 
     # construct the full public urls so react can display them
-    frame_urls = [f"http://localhost:8000/outputs/{clean_name}/{job_id_dir.name}/{f}" for f in frames]
+    frame_urls = [f"http://localhost:8000/outputs/{project}/{clean_name}/{job_id_dir.name}/{f}" for f in frames]
 
     return {
+        "project": project,
         "scene": clean_name,
         "folder": job_id_dir.name,
         "frames": frame_urls,
@@ -168,7 +169,14 @@ async def get_rendered_frames(scene_name: str, job_id: str) -> dict:
 @app.post("/jobs/submit")
 async def submit_job(job: RenderJob) -> dict:
     frames = f"{job.start_frame}-{job.end_frame}"
-    job_instance = tasks_queue.enqueue(execute_render, job.project, job.scene_file, frames, result_ttl=-1)
+    job_instance = tasks_queue.enqueue(
+        execute_render, 
+        job.project, 
+        job.scene_file, 
+        frames, 
+        result_ttl=-1,
+        job_timeout='2h'
+    )
 
     return {
         "job_id": job_instance.id,
@@ -203,14 +211,15 @@ async def list_all_jobs() -> dict:
     for job in jobs:
         if not job: continue
 
-        scene = job.args[0] if job.args else "Unknown"
-        frames = job.args[1] if len(job.args) > 1 else "Unknown"
+        project = job.args[0] if len(job.args) > 0 else 'Unknown'
+        scene = job.args[1] if len(job.args) > 1 else "Unknown"
+        frames = job.args[2] if len(job.args) > 2 else "Unknown"
 
         # --- NEW: Dynamically count rendered frames ---
         rendered_count = 0
         if scene != "Unknown":
             clean_name = scene.replace(".blend", "")
-            scene_dir = Path(f"/render_data/output/{clean_name}")
+            scene_dir = Path(f"/render_data/output/{project}/{clean_name}")
             
             if scene_dir.exists():
                 job_dirs = [d for d in scene_dir.iterdir() if d.is_dir() and d.name.startswith(job.id)]
@@ -220,6 +229,7 @@ async def list_all_jobs() -> dict:
         result.append({
             "job_id": job.id,
             "status": job.get_status(),
+            "project": project,
             "scene": scene,
             "frames": frames,
             "started_at": job.started_at.isoformat() if job.started_at else None,

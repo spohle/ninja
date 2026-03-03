@@ -1,13 +1,14 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 
 interface RenderGalleryModalProps {
+  project: string;
   sceneName: string;
   jobId: string;
   isOpen: boolean;
   onClose: () => void;
 }
 
-export default function RenderGalleryModal({ sceneName, jobId, isOpen, onClose }: RenderGalleryModalProps) {
+export default function RenderGalleryModal({ project, sceneName, jobId, isOpen, onClose }: RenderGalleryModalProps) {
   const [frames, setFrames] = useState<string[]>([]);
   const [folderName, setFolderName] = useState<string>(''); 
   const [isLoading, setIsLoading] = useState(true);
@@ -24,7 +25,7 @@ export default function RenderGalleryModal({ sceneName, jobId, isOpen, onClose }
     if (!isBackground) setIsLoading(true);
     
     try {
-      const response = await fetch(`http://localhost:8000/renders/${sceneName}/${jobId}`);
+      const response = await fetch(`http://localhost:8000/renders/${project}/${sceneName}/${jobId}`);
       const data = await response.json();
       setFrames(data.frames || []);
       setFolderName(data.folder || ''); 
@@ -39,7 +40,7 @@ export default function RenderGalleryModal({ sceneName, jobId, isOpen, onClose }
 
   const fetchLog = async () => {
     try {
-      const response = await fetch(`http://localhost:8000/renders/${sceneName}/${jobId}/log`);
+      const response = await fetch(`http://localhost:8000/renders/${project}/${sceneName}/${jobId}/log`);
       const data = await response.json();
       setLogText(data.log || '');
     } catch (error) {
