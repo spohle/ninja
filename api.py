@@ -11,6 +11,9 @@ from pydantic import BaseModel
 import shutil
 import datetime
 import zipfile
+import subprocess
+import re
+import json
 
 from worker import execute_render
 
@@ -66,6 +69,76 @@ async def list_projects():
 
     return {"projects": zip(names, mods)}
 
+@app.get("/projects/{project_name}/shots")
+async def list_project_shots(project_name: str) -> list:
+    storage_path = Path("/render_data")
+    project_path = storage_path / project_name
+    if not project_path.exists():
+        return [] 
+    
+    scenes_path = project_path / "scenes"
+    if not scenes_path.exists():
+        return [] 
+
+    blend_files = [f.name for f in scenes_path.glob('*.blend')]
+    mods = [datetime.datetime.fromtimestamp(f.stat().st_mtime).astimezone() for f in scenes_path.glob('*.blend')]
+
+    project_output_path = storage_path / "output" / project_name
+    num_renders = {}
+    if project_output_path.exists():
+        for b in blend_files:
+            name = b.replace('.blend', '')
+            name_path = project_output_path / name
+            if not name_path.exists(): continue
+            
+            count = len([x for x in name_path.iterdir() if x.is_dir()])
+            num_renders[b] = count
+
+    render_counts = [num_renders.get(b, 0) for b in blend_files]
+
+    # read in the metadata which has the start and end frames
+    metadata_path = project_path / "scenes_metadata.json"
+    frame_data = []
+    if metadata_path.exists():
+        with open(metadata_path, "r") as f:
+            meta_data = json.load(f)
+
+        frame_data = []
+        for b in blend_files:
+            print(f"{b=}")
+            blend_frame_data = meta_data.get(b.replace('.blend', ''), {'start':0, 'end':0})
+            print(f"{blend_frame_data=}")
+            frame_data.append(blend_frame_data)
+
+
+    return list(zip(blend_files, mods, render_counts, frame_data))
+
+def _create_metadata(dst_path: Path) -> None:
+    scenes_path = dst_path / "scenes"
+    if not scenes_path.exists(): return
+
+    py_cmd = "import bpy; s=bpy.context.scene; print(f'FRAMES:{s.frame_start}-{s.frame_end}')"
+
+    blend_data = {}
+    blends = [f for f in scenes_path.glob('*.blend')]
+    for blend_path in blends:
+        result = subprocess.run(
+            ["blender", "-b", str(blend_path), "--python-expr", py_cmd],
+            capture_output=True, text=True, timeout=30
+        )
+        
+        # Parse the output (e.g., "FRAMES:1-250")
+        match = re.search(r"FRAMES:(\d+-\d+)", result.stdout)
+        if match:
+            actual_frames = match.group(1)
+            start, end = actual_frames.split('-')
+            blend_data[blend_path.stem] = {"start": int(start), "end": int(end)}
+            
+    data_json_path = dst_path / "scenes_metadata.json"
+    with open(data_json_path, "w") as f:
+        json.dump(blend_data, f, indent=4)
+
+
 @app.post("/upload")
 async def upload_project(file: UploadFile = File(...)):
     if not file or not file.filename or not file.filename.endswith('.zip'):
@@ -84,6 +157,8 @@ async def upload_project(file: UploadFile = File(...)):
 
         with zipfile.ZipFile(dest_path, 'r') as zip_ref:
             zip_ref.extractall(dest_dir_path)
+
+        _create_metadata(dest_dir_path)
 
     return {"status": "success", "filename": file.filename}
 
@@ -168,7 +243,7 @@ async def get_rendered_frames(project: str, scene_name: str, job_id: str) -> dic
 
 @app.post("/jobs/submit")
 async def submit_job(job: RenderJob) -> dict:
-    frames = f"{job.start_frame}-{job.end_frame}"
+    frames = f"{job.start_frame}:{job.end_frame}"
     job_instance = tasks_queue.enqueue(
         execute_render, 
         job.project, 

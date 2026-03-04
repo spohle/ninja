@@ -6,6 +6,7 @@ from rq import get_current_job
 from rq.job import Job
 import zipfile
 import tempfile
+import re
 
 def create_named_output_dir(output_dir: str) -> Path | None:
     output_dir_path = Path(output_dir)
@@ -22,15 +23,31 @@ def create_named_output_dir(output_dir: str) -> Path | None:
 
     return final_path
 
+def get_frame_range(scene_path: Path) -> list:
+    py_cmd = "import bpy; s=bpy.context.scene; print(f'FRAMES:{s.frame_start}-{s.frame_end}')"
+    result = subprocess.run(
+        ["blender", "-b", str(scene_path), "--python-expr", py_cmd],
+        capture_output=True, text=True
+    )
+
+    match = re.search(r"FRAMES:(\d+-\d+)", result.stdout)
+    if match:
+        actual_frames = match.group(1)
+        return actual_frames.split('-')
+    else:
+        return [None, None]
+
 def execute_render(project: str, scene_file: str, frames: str):
+    project = project.replace('.zip', '')
     print(f"starting render for {project}|{scene_file} (Frames: {frames}...")
 
-    start_frame, end_frame = frames.split("-")
+    start_frame, end_frame = frames.split(":")
 
-    full_scene_path = Path("/render_data") / project / "scenes" / f"{scene_file}.blend"
+    full_scene_path = Path("/render_data") / project / "scenes" / scene_file
     if not full_scene_path.exists():
-        print(f"Could not find scene file: {full_scene_path}")
-        return(f"Could not find scene file: {full_scene_path}")
+        print(f"DEBUG: Could not find scene file: {full_scene_path}")
+        return(f"DEBUG: Could not find scene file: {full_scene_path}")
+
 
     output_dir = Path(f"/render_data/output/{project}/{scene_file}")
     output_dir.mkdir(exist_ok=True, parents=True)

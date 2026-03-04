@@ -29,19 +29,21 @@ function App() {
         <div className="flex flex-col lg:flex-row gap-8">
           
           {/* Main Content: Now on the Left (takes 3/4 width) */}
-          <main className="lg:w-5/6 w-full flex flex-col gap-8 order-1">
+          <main className="lg:w-3/4 w-full flex flex-col gap-8 order-1">
             <JobSubmitter />
             <JobQueue />
           </main>
 
           {/* Sidebar: Now on the Right (takes 1/4 width) */}
-          <aside className="lg:w-1/6 w-full order-2">
-            <div className="flex-row justify-center space-y-6">
-              <ProjectList refreshTrigger={refreshCounter} onSuccess={handleUploadSuccess} />
+          <aside className="lg:w-1/4 w-full order-2">
+            <div className="flex flex-col items-center space-y-6 w-full">
+              <div className="w-full">
+                <ProjectList refreshTrigger={refreshCounter} onSuccess={handleUploadSuccess} />
+              </div>
 
               <button 
                 onClick={() => setIsModalOpen(true)}
-                className="bg-blue-400 hover:bg-blue-500 px-4 py-1 rounded-lg font-xs transition-colors"
+                className="bg-rose-400 hover:bg-blue-500 px-4 py-1 rounded-lg font-xs transition-colors w-full"
               >
                 Upload Project
               </button>
