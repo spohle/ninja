@@ -73,8 +73,15 @@ export default function JobQueue() {
 
   // NEW: Calculate the total number of frames requested based on "start-end"
   const getTotalFrames = (framesStr: string) => {
-    if (!framesStr || !framesStr.includes('-')) return 0;
-    const [start, end] = framesStr.split('-').map(Number);
+    if (!framesStr) return 0;
+
+    // Use the regex split you already have
+    const parts = framesStr.split(/[-:]/);
+    if (parts.length < 2) return 0;
+
+    const start = Number(parts[0]);
+    const end = Number(parts[1]);
+
     return Math.max(0, (end - start) + 1);
   };
 
@@ -144,7 +151,7 @@ export default function JobQueue() {
                 const percentDone = totalFrames > 0 
                   ? Math.min(100, Math.round((job.rendered_frames / totalFrames) * 100)) 
                   : 0;
-
+                
                 return (
                   <tr key={job.job_id} className="border-t border-gray-700 hover:bg-gray-700/30 transition-colors">
                     <td className="px-4 py-3 text-transform: uppercase font-bold">
@@ -159,25 +166,27 @@ export default function JobQueue() {
                         {job.scene}
                       </button>
                     </td>
-                    
+
                     {/* NEW: Progress Bar Integration */}
-                    <td className="px-4 py-3">
-                      <div className="flex flex-col gap-1.5">
-                        <span className="font-mono text-gray-300">{job.frames}</span>
+                    <td className="px-4 py-3 min-w-[160px]"> {/* Changed w-40 to min-w for flexibility */}
+                      <div className="flex flex-col gap-2">
+                        <span className="font-mono text-gray-300 text-sm">
+                          {job.frames.replace(':', '-')}
+                        </span>
                         
-                        {/* Only show progress if started or finished */}
-                        {(job.status === 'started' || job.status === 'finished') && totalFrames > 0 && (
-                          <div className="w-full">
-                            <div className="w-full bg-gray-900 rounded-full h-1.5 overflow-hidden border border-gray-700">
+                        {/* Logic confirmed working via debug labels! */}
+                        {(job.status.toLowerCase() === 'started' || job.status.toLowerCase() === 'finished') && totalFrames > 0 && (
+                          <div className="w-full space-y-1">
+                            <div className="w-full bg-gray-900 rounded-full h-2 overflow-hidden border border-gray-700">
                               <div 
                                 className={`h-full transition-all duration-500 ease-out rounded-full 
-                                  ${job.status === 'finished' ? 'bg-green-500' : 'bg-blue-500'}`} 
+                                  ${job.status.toLowerCase() === 'finished' ? 'bg-green-500' : 'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]'}`} 
                                 style={{ width: `${percentDone}%` }}
                               ></div>
                             </div>
-                            <div className="text-[10px] text-gray-500 mt-1 flex justify-between">
-                              <span>{job.rendered_frames} / {totalFrames} frames</span>
-                              <span>{percentDone}%</span>
+                            <div className="text-[10px] text-gray-500 flex justify-between font-mono">
+                              <span>{job.rendered_frames} / {totalFrames}</span>
+                              <span className="font-bold">{percentDone}%</span>
                             </div>
                           </div>
                         )}

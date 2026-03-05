@@ -274,6 +274,24 @@ async def get_job_status(job_id: str) -> dict:
         "ended_at": job_instance.ended_at.isoformat() if job_instance.ended_at else None,
     }
 
+def count_rendered_frames(project: str, scene: str, job: Job) -> int:
+    project = project.replace('.zip', '')
+    scene = scene.replace('.blend', '')
+
+    scene_dir = Path(f"/render_data/output/{project}/{scene}")
+    if not scene_dir.exists():
+        print(f"Scene dir not found: {scene_dir}")
+        return 0
+
+    job_dirs = [d for d in scene_dir.iterdir() if d.is_dir() and d.name.startswith(job.id)]
+    if not job_dirs:
+        print(f"Job dir starting with {job.id} not found")
+        return 0
+    
+    count = len(list(job_dirs[0].glob('*.png')))
+
+    return count
+
 @app.get("/jobs/")
 async def list_all_jobs() -> dict:
     job_ids = []
@@ -293,13 +311,7 @@ async def list_all_jobs() -> dict:
         # --- NEW: Dynamically count rendered frames ---
         rendered_count = 0
         if scene != "Unknown":
-            clean_name = scene.replace(".blend", "")
-            scene_dir = Path(f"/render_data/output/{project}/{clean_name}")
-            
-            if scene_dir.exists():
-                job_dirs = [d for d in scene_dir.iterdir() if d.is_dir() and d.name.startswith(job.id)]
-                rendered_count = len(list(job_dirs[0].glob("*.png"))) if job_dirs else 0
-                
+            rendered_count = count_rendered_frames(project, scene, job)
 
         result.append({
             "job_id": job.id,

@@ -48,8 +48,8 @@ def execute_render(project: str, scene_file: str, frames: str):
         print(f"DEBUG: Could not find scene file: {full_scene_path}")
         return(f"DEBUG: Could not find scene file: {full_scene_path}")
 
-
-    output_dir = Path(f"/render_data/output/{project}/{scene_file}")
+    clean_scene_name = scene_file.replace('.blend', '')
+    output_dir = Path(f"/render_data/output/{project}/{clean_scene_name}")
     output_dir.mkdir(exist_ok=True, parents=True)
 
     output_dir_path: Path | None = create_named_output_dir(str(output_dir))
