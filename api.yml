@@ -7,12 +7,13 @@ spec:
   replicas: 1
   selector:
     matchLabels:
-      app: api
+      app: api # Matches the template label below
   template:
     metadata:
       labels:
         app: api
     spec:
+      serviceAccountName: ninja-api-sa # THIS IS THE CRITICAL FIX
       containers:
       - name: api
         image: render-api:latest
@@ -23,18 +24,17 @@ spec:
         volumeMounts:
         - mountPath: /render_data 
           name: shared-storage
-      # --- FIX: volumes moved out of the container list and under spec ---
       volumes:
       - name: shared-storage
         persistentVolumeClaim:
-          claimName: render-data-pvc
+          claimName: render-data-pvc # Ensure this matches your storage.yml
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: api-service
 spec:
-  type: LoadBalancer # Exposes port 8000 to your local Mac browser
+  type: LoadBalancer 
   selector:
     app: api
   ports:

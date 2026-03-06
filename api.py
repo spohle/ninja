@@ -15,6 +15,8 @@ import subprocess
 import re
 import json
 import uuid
+from kubernetes import client, config
+import asyncio
 
 from worker import execute_render
 
@@ -36,6 +38,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+config.load_incluster_config()
+v1 = client.CoreV1Api()
+
+MAX_PODS = 10
+
 # ensure the folder exists so FastAPI doesnt crash
 os.makedirs("/render_data/output", mode=0x777, exist_ok=True) 
 app.mount("/outputs", StaticFiles(directory="/render_data/output"), name="outputs")
@@ -53,6 +60,27 @@ class RenderJob(BaseModel):
     start_frame: int
     end_frame: int
 
+
+async def cleanup_finished_pods():
+    """Background task to remove completed or failed worker pods."""
+    while True:
+        try:
+            # List all pods with the ninja-worker label
+            pods = v1.list_namespaced_pod(namespace="default", label_selector="app=ninja-worker")
+            for pod in pods.items:
+                # Remove pods that have finished their work
+                if pod.status.phase in ["Succeeded", "Failed"]:
+                    print(f"Cleaning up {pod.status.phase} pod: {pod.metadata.name}")
+                    v1.delete_namespaced_pod(name=pod.metadata.name, namespace="default")
+        except Exception as e:
+            print(f"Cleanup error: {e}")
+        
+        await asyncio.sleep(60) # Run every minute
+
+@app.on_event("startup")
+async def startup_event():
+    """Start the background cleanup task when FastAPI starts."""
+    asyncio.create_task(cleanup_finished_pods())
 
 @app.delete("/projects/{project_name}")
 async def delete_project(project_name: str) -> dict:
@@ -263,27 +291,53 @@ def _chunk_range(start: int, end: int) -> list:
 
 @app.post("/jobs/submit")
 async def submit_job(job: RenderJob) -> dict:
+    # Check current pod count to enforce the max limit
+    current_pods = v1.list_namespaced_pod(namespace="default", label_selector="app=ninja-worker")
+    if len(current_pods.items) >= MAX_PODS:
+        return {"error": "Maximum worker capacity reached. Please wait."}
+
     parent_id = f"parent-{uuid.uuid4()}"
-    # Define the timestamped folder name ONCE here
     timestamp = datetime.datetime.now().strftime("%Y_%m_%d__%H_%M_%S")
     folder_name = f"{parent_id}__{timestamp}"
     
     frame_chunks = _chunk_range(job.start_frame, job.end_frame)
-    child_job_ids = []
     
+    child_job_ids = []
     for start, end in frame_chunks:
-        frames = f"{start}:{end}"
-        job_instance = tasks_queue.enqueue(
-            execute_render, 
-            job.project, 
-            job.scene_file, 
-            frames, 
-            folder_name, # Pass the shared timestamped folder name to the worker
-            job_id=f"child-{uuid.uuid4()}",
-            meta={'parent_id': parent_id},
-            result_ttl=-1
-        )
-        child_job_ids.append(job_instance.id)
+        child_id = f"child-{uuid.uuid4()}"
+        child_job_ids.append(child_id)
+        
+        # Define the Pod manifest dynamically
+        # Inside the submit_job function where you define the pod_manifest
+        pod_manifest = {
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": {
+                "name": child_id, 
+                "labels": {"app": "ninja-worker", "parent": parent_id}
+            },
+            "spec": {
+                "containers": [{
+                    "name": "worker",
+                    "image": "render-api:latest", # Or your specific worker image
+                    "imagePullPolicy": "Never",    # <--- Add this to tell K8s to use the local image
+                    "args": [
+                        "python", "worker_standalone.py", 
+                        job.project, job.scene_file, f"{start}:{end}", folder_name
+                    ],
+                    # ... resources and other config ...
+                    "volumeMounts": [{"name": "render-data", "mountPath": "/render_data"}]
+                }],
+                "restartPolicy": "Never",
+                "volumes": [{
+                    "name": "render-data", 
+                    "persistentVolumeClaim": {
+                        "claimName": "render-data-pvc"  # <--- CHANGE THIS from "ninja-pvc"
+                    }
+                }]
+            }
+        }
+        v1.create_namespaced_pod(namespace="default", body=pod_manifest)
 
     redis_conn.sadd(f"members:{parent_id}", *child_job_ids)
     
@@ -356,18 +410,18 @@ async def list_all_jobs() -> dict:
                 self.id = id_str
         mock_job = MockJob(p_id) 
 
+        rendered = count_rendered_frames(meta_decoded.get('project'), meta_decoded.get('scene'), meta_decoded)
+        total = int(meta_decoded.get('total_frames', 0))    
+        status = "FINISHED" if rendered >= total else "STARTED"
+
         # 3. NOW all_done is defined and safe to use
         jobs_data.append({
             "job_id": p_id,
             "project": meta_decoded.get('project'),
             "scene": meta_decoded.get('scene'),
-            "status": "FINISHED" if all_done else "STARTED",
-            "rendered_frames": count_rendered_frames(
-                meta_decoded.get('project'), 
-                meta_decoded.get('scene'), 
-                meta_decoded # Pass the whole dict
-            ),
-            "frames": f"1-{meta_decoded.get('total_frames')}"
+            "status": status,
+            "rendered_frames": rendered,
+            "frames": f"1-{total}"
         })
     
     return {'jobs': jobs_data}

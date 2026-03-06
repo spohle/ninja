@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ninja-api-sa
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pod-creator-role
+rules:
+- apiGroups: [""]
+  resources: ["pods", "pods/status", "pods/log"]
+  verbs: ["create", "get", "list", "watch", "delete"] # Needed to spawn and monitor chunks
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ninja-api-rb
+subjects:
+- kind: ServiceAccount
+  name: ninja-api-sa
+roleRef:
+  kind: Role
+  name: pod-creator-role
+  apiGroup: rbac.authorization.k8s.io
