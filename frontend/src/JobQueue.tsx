@@ -10,6 +10,7 @@ interface Job {
   started_at: string | null;
   ended_at: string | null;
   rendered_frames: number; // <-- New field
+  total_frames?: number; // <-- Optional field for total frames, if available from API
 }
 
 export default function JobQueue() {
@@ -104,7 +105,7 @@ export default function JobQueue() {
       }
     };
 
-  const handleUpload = async(file) => {
+  const handleUpload = async(file: string | Blob) => {
     const formData = new FormData();
     formData.append("file", file);
 
@@ -146,12 +147,10 @@ export default function JobQueue() {
               </tr>
             ) : (
               jobs.map((job) => {
+                const status = job.status.toLowerCase();
                 const totalFrames = getTotalFrames(job.frames);
-                // Calculate percentage (cap at 100 just in case)
-                const percentDone = totalFrames > 0 
-                  ? Math.min(100, Math.round((job.rendered_frames / totalFrames) * 100)) 
-                  : 0;
-                
+                const percentDone = totalFrames > 0 ? Math.round((job.rendered_frames / totalFrames) * 100) : 0;
+
                 return (
                   <tr key={job.job_id} className="border-t border-gray-700 hover:bg-gray-700/30 transition-colors">
                     <td className="px-4 py-3 text-transform: uppercase font-bold">
@@ -195,10 +194,10 @@ export default function JobQueue() {
 
                     <td className="px-4 py-3">
                       <span className={`px-2 py-1 rounded text-[10px] uppercase font-bold tracking-wider
-                        ${job.status === 'finished' ? 'bg-green-900/50 text-green-400 border border-green-800' : ''}
-                        ${job.status === 'failed' ? 'bg-red-900/50 text-red-400 border border-red-800' : ''}
-                        ${job.status === 'started' ? 'bg-blue-900/50 text-blue-400 border border-blue-800' : ''}
-                        ${job.status === 'queued' ? 'bg-yellow-900/50 text-yellow-400 border border-yellow-800' : ''}
+                        ${status === 'finished' ? 'bg-green-900/50 text-green-400 border border-green-800' : ''}
+                        ${status === 'failed' ? 'bg-red-900/50 text-red-400 border border-red-800' : ''}
+                        ${status === 'started' ? 'bg-blue-900/50 text-blue-400 border border-blue-800' : ''}
+                        ${status === 'queued' ? 'bg-yellow-900/50 text-yellow-400 border border-yellow-800' : ''}
                       `}>
                         {job.status}
                       </span>

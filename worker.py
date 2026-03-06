@@ -37,44 +37,24 @@ def get_frame_range(scene_path: Path) -> list:
     else:
         return [None, None]
 
-def execute_render(project: str, scene_file: str, frames: str):
+def execute_render(project: str, scene_file: str, frames: str, shared_folder: str) -> str:    
     project = project.replace('.zip', '')
-    print(f"starting render for {project}|{scene_file} (Frames: {frames}...")
-
     start_frame, end_frame = frames.split(":")
-
-    full_scene_path = Path("/render_data") / project / "scenes" / scene_file
-    if not full_scene_path.exists():
-        print(f"DEBUG: Could not find scene file: {full_scene_path}")
-        return(f"DEBUG: Could not find scene file: {full_scene_path}")
-
     clean_scene_name = scene_file.replace('.blend', '')
-    output_dir = Path(f"/render_data/output/{project}/{clean_scene_name}")
+
+    # All workers drop frames into this one shared timestamped folder
+    output_dir = Path(f"/render_data/output/{project}/{clean_scene_name}/{shared_folder}")
     output_dir.mkdir(exist_ok=True, parents=True)
 
-    output_dir_path: Path | None = create_named_output_dir(str(output_dir))
-    if output_dir_path is None:
-        print(f"Failed to create output dir: {output_dir_path}")
-        return(f"Failed to create output dir: {output_dir_path}")
-
-    output_dir_path.mkdir(exist_ok=True)
-    output_path = f"{output_dir_path}/frame.####"
-
-    os.makedirs(output_dir, exist_ok=True)
-    
-    blend_path = full_scene_path
+    output_path = f"{output_dir}/frame.####"
 
     command = [
-        "blender",
-        "-b", blend_path,
+        "blender", "-b", str(Path("/render_data") / project / "scenes" / scene_file),
         "-o", output_path,
-        "-s", start_frame,
-        "-e", end_frame,
-        "-a", # render animation
-        "--log", "*"
+        "-s", start_frame, "-e", end_frame, "-a"
     ]
 
-    log_file_path = output_dir_path / "render.log"
+    log_file_path = output_dir / "render.log"
 
     try:
         with open(log_file_path, "w") as log_file:

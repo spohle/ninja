@@ -14,14 +14,23 @@ import zipfile
 import subprocess
 import re
 import json
+import uuid
 
 from worker import execute_render
 
 app = FastAPI(title="Render Farm API")
 
+origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -34,6 +43,8 @@ app.mount("/outputs", StaticFiles(directory="/render_data/output"), name="output
 # connect to Redis Container (docker auto routes hostname "redis" to the correct container)
 redis_conn = Redis(host="redis", port=6379)
 tasks_queue = Queue("render_queue", connection=redis_conn)
+
+CHUNK_SIZE = 5
 
 # define what a render job looks like
 class RenderJob(BaseModel):
@@ -190,24 +201,16 @@ async def get_render_log(project: str, scene_name: str, job_id: str) -> dict:
 
 @app.delete("/jobs/{job_id}")
 async def delete_job(job_id: str):
-    job_instance = tasks_queue.fetch_job(job_id)
-    if job_instance is None: 
-        return {"status": "ignored", "message": f"Job {job_id} does not exist"}
+    child_ids = redis_conn.smembers(f"members:{job_id}")
+    for c_id in child_ids:
+        child_job = tasks_queue.fetch_job(c_id.decode())
+        if child_job:
+            child_job.delete()
+    
+    redis_conn.delete(f"members:{job_id}")
+    redis_conn.delete(f"metadata:{job_id}")
 
-
-    scene_name = job_instance.args[0] if job_instance.args else "Unknown"
-    job_instance.delete()
-
-    if scene_name != "Unknown":
-        clean_name = scene_name.replace(".blend", "")
-        scene_dir = Path(f"/render_data/output/{clean_name}")
-        all_job_id_matching_dirs = [d for d in scene_dir.iterdir() if d.is_dir() and d.name.startswith(job_id)]
-        if all_job_id_matching_dirs:
-            job_id_dir: Path = all_job_id_matching_dirs[0]
-            if job_id_dir.exists():
-                shutil.rmtree(job_id_dir)
-
-    return {"status": "success", "message": f"Job {job_id} deleted"}
+    return {"status": "success", "message": f"Deleted job {job_id} and its children"}
 
 # new endpoint to get rendered frames for the scene
 @app.get("/renders/{project}/{scene_name}/{job_id}")
@@ -241,23 +244,60 @@ async def get_rendered_frames(project: str, scene_name: str, job_id: str) -> dic
         "total": len(frame_urls)
     }
 
+def _chunk_range(start: int, end: int) -> list:
+    start = int(start)
+    end = int(end)
+
+    output = []
+    current = start
+    while current < end:
+        c_start = current
+        c_end = c_start + CHUNK_SIZE
+        if c_end>=end: c_end = end
+
+        output.append([c_start, c_end])
+        current = c_end + 1
+
+    return output
+
+
 @app.post("/jobs/submit")
 async def submit_job(job: RenderJob) -> dict:
-    frames = f"{job.start_frame}:{job.end_frame}"
-    job_instance = tasks_queue.enqueue(
-        execute_render, 
-        job.project, 
-        job.scene_file, 
-        frames, 
-        result_ttl=-1,
-        job_timeout='2h'
-    )
+    parent_id = f"parent-{uuid.uuid4()}"
+    # Define the timestamped folder name ONCE here
+    timestamp = datetime.datetime.now().strftime("%Y_%m_%d__%H_%M_%S")
+    folder_name = f"{parent_id}__{timestamp}"
+    
+    frame_chunks = _chunk_range(job.start_frame, job.end_frame)
+    child_job_ids = []
+    
+    for start, end in frame_chunks:
+        frames = f"{start}:{end}"
+        job_instance = tasks_queue.enqueue(
+            execute_render, 
+            job.project, 
+            job.scene_file, 
+            frames, 
+            folder_name, # Pass the shared timestamped folder name to the worker
+            job_id=f"child-{uuid.uuid4()}",
+            meta={'parent_id': parent_id},
+            result_ttl=-1
+        )
+        child_job_ids.append(job_instance.id)
 
-    return {
-        "job_id": job_instance.id,
-        "status": "QUEUED",
-        "message": "Job sent to render farm!",
-    }
+    redis_conn.sadd(f"members:{parent_id}", *child_job_ids)
+    
+    # Store the folder_name in metadata so the counter can find it later
+    redis_conn.hset(f"metadata:{parent_id}", mapping={
+            "project": job.project,
+            "scene": job.scene_file,
+            "total_frames": (job.end_frame-job.start_frame) + 1,
+            "status": "STARTED",
+            "folder_name": folder_name,
+            "started_at": datetime.datetime.utcnow().isoformat()
+    })
+
+    return {"parent_id": parent_id, "folder": folder_name}
 
 @app.get("/jobs/job/{job_id}")
 async def get_job_status(job_id: str) -> dict:
@@ -274,57 +314,60 @@ async def get_job_status(job_id: str) -> dict:
         "ended_at": job_instance.ended_at.isoformat() if job_instance.ended_at else None,
     }
 
-def count_rendered_frames(project: str, scene: str, job: Job) -> int:
+def count_rendered_frames(project: str, scene: str, meta: dict) -> int:
     project = project.replace('.zip', '')
     scene = scene.replace('.blend', '')
-
-    scene_dir = Path(f"/render_data/output/{project}/{scene}")
-    if not scene_dir.exists():
-        print(f"Scene dir not found: {scene_dir}")
+    
+    # Get the shared folder name we saved in metadata
+    folder_name = meta.get('folder_name')
+    if not folder_name: 
         return 0
 
-    job_dirs = [d for d in scene_dir.iterdir() if d.is_dir() and d.name.startswith(job.id)]
-    if not job_dirs:
-        print(f"Job dir starting with {job.id} not found")
+    job_dir = Path(f"/render_data/output/{project}/{scene}/{folder_name}")
+    if not job_dir.exists(): 
         return 0
     
-    count = len(list(job_dirs[0].glob('*.png')))
-
-    return count
+    # Counts all frames from all workers contributing to this parent
+    return len(list(job_dir.glob('*.png')))
 
 @app.get("/jobs/")
 async def list_all_jobs() -> dict:
-    job_ids = []
-    for key in redis_conn.scan_iter("rq:job:*"):
-        job_ids.append(key.decode("utf-8").split("rq:job:")[1])
-    
-    jobs = Job.fetch_many(job_ids, connection=redis_conn)
+    parent_keys = redis_conn.keys("metadata:parent-*")
+    jobs_data = []
 
-    result = []
-    for job in jobs:
-        if not job: continue
+    for key in parent_keys:
+        p_id = key.decode().replace("metadata:", "")
+        meta_bytes = redis_conn.hgetall(key)
+        meta_decoded = {k.decode(): v.decode() for k, v in meta_bytes.items()}
 
-        project = job.args[0] if len(job.args) > 0 else 'Unknown'
-        scene = job.args[1] if len(job.args) > 1 else "Unknown"
-        frames = job.args[2] if len(job.args) > 2 else "Unknown"
+        # 1. ADD THIS LOGIC: Check all child tasks for this parent
+        child_ids = redis_conn.smembers(f"members:{p_id}")
+        all_done = True
+        for c_id in child_ids:
+            t = tasks_queue.fetch_job(c_id.decode())
+            # If any child is missing or not finished, the parent is still "STARTED"
+            if not t or t.get_status() != 'finished':
+                all_done = False
+                break
 
-        # --- NEW: Dynamically count rendered frames ---
-        rendered_count = 0
-        if scene != "Unknown":
-            rendered_count = count_rendered_frames(project, scene, job)
+        # 2. SATISFY THE MOCK: Use the parent ID for the folder lookup
+        class MockJob:
+            def __init__(self, id_str):
+                self.id = id_str
+        mock_job = MockJob(p_id) 
 
-        result.append({
-            "job_id": job.id,
-            "status": job.get_status(),
-            "project": project,
-            "scene": scene,
-            "frames": frames,
-            "started_at": job.started_at.isoformat() if job.started_at else None,
-            "ended_at": job.ended_at.isoformat() if job.ended_at else None,
-            "rendered_frames": rendered_count # Expose the count to React
+        # 3. NOW all_done is defined and safe to use
+        jobs_data.append({
+            "job_id": p_id,
+            "project": meta_decoded.get('project'),
+            "scene": meta_decoded.get('scene'),
+            "status": "FINISHED" if all_done else "STARTED",
+            "rendered_frames": count_rendered_frames(
+                meta_decoded.get('project'), 
+                meta_decoded.get('scene'), 
+                meta_decoded # Pass the whole dict
+            ),
+            "frames": f"1-{meta_decoded.get('total_frames')}"
         })
-
-    # Sort jobs by started_at (newest first)
-    result.sort(key=lambda x: x["started_at"] or "", reverse=True)
-
-    return {"total_jobs": len(result), "jobs": result}
+    
+    return {'jobs': jobs_data}
