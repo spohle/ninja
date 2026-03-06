@@ -48,10 +48,9 @@ export default function JobQueue() {
     return () => clearInterval(ticker);
   }, []);
 
-  const formatTime = (isoString: string | null) => {
-    if (!isoString) return '--';
-    const date = new Date(isoString);
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const formatTime = (dateStr: string | null) => {
+    if (!dateStr || dateStr === "") return "—";
+    return new Date(dateStr).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   };
 
   const getDuration = (start: string | null, end: string | null, status: string) => {
@@ -150,6 +149,8 @@ export default function JobQueue() {
                 const status = job.status.toLowerCase();
                 const totalFrames = getTotalFrames(job.frames);
                 const percentDone = totalFrames > 0 ? Math.round((job.rendered_frames / totalFrames) * 100) : 0;
+                const started_at = job.started_at;
+                const ended_at = job.ended_at;
 
                 return (
                   <tr key={job.job_id} className="border-t border-gray-700 hover:bg-gray-700/30 transition-colors">
@@ -203,15 +204,12 @@ export default function JobQueue() {
                       </span>
                     </td>
                     <td className="px-4 py-3 font-mono text-xs">
-                      {formatTime(job.started_at)}
+                      <span className="text-gray-300">{formatTime(started_at)}</span>
                     </td>
                     <td className="px-4 py-3 font-mono text-xs">
-                      {job.status === 'finished' ? (
+                      {job.status.toLowerCase() === 'finished' ? (
                         <div className="flex flex-col">
-                          <span className="text-gray-300">{formatTime(job.ended_at)}</span>
-                          <span className="text-gray-500 text-[10px]">
-                            Took: {getDuration(job.started_at, job.ended_at, job.status)}
-                          </span>
+                          <span className="text-gray-300">{formatTime(ended_at)}</span>
                         </div>
                       ) : job.status === 'started' ? (
                         <div className="flex flex-col">

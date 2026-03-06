@@ -1,10 +1,8 @@
 import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
+
 import './App.css'
 
 import JobQueue from './JobQueue';
-import JobSubmitter from './JobSubmitter.tsx';
 import FileUploader from './Uploader.tsx';
 import ProjectList from './ProjectList.tsx';
 
@@ -22,7 +20,7 @@ function App() {
         
         {/* Header stays full width */}
         <header className="flex items-baseline justify-between mb-8 border-b border-gray-800 pb-4">
-          <h1 className="text-3xl font-bold text-blue-400">Ninja Blender</h1>
+          <h1 className="text-3xl font-bold text-blue-400">Render-Blender</h1>
         </header>
 
         {/* Main Layout Grid */}
@@ -30,7 +28,6 @@ function App() {
           
           {/* Main Content: Now on the Left (takes 3/4 width) */}
           <main className="lg:w-3/4 w-full flex flex-col gap-8 order-1">
-            <JobSubmitter />
             <JobQueue />
           </main>
 

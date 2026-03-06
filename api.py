@@ -340,6 +340,8 @@ async def submit_job(job: RenderJob) -> dict:
         v1.create_namespaced_pod(namespace="default", body=pod_manifest)
 
     redis_conn.sadd(f"members:{parent_id}", *child_job_ids)
+
+    start_time = datetime.datetime.now().isoformat()
     
     # Store the folder_name in metadata so the counter can find it later
     redis_conn.hset(f"metadata:{parent_id}", mapping={
@@ -348,7 +350,8 @@ async def submit_job(job: RenderJob) -> dict:
             "total_frames": (job.end_frame-job.start_frame) + 1,
             "status": "STARTED",
             "folder_name": folder_name,
-            "started_at": datetime.datetime.utcnow().isoformat()
+            "started_at": start_time,
+            "fisnished_at": ""
     })
 
     return {"parent_id": parent_id, "folder": folder_name}
@@ -386,6 +389,7 @@ def count_rendered_frames(project: str, scene: str, meta: dict) -> int:
 
 @app.get("/jobs/")
 async def list_all_jobs() -> dict:
+    print("Listing all jobs...")
     parent_keys = redis_conn.keys("metadata:parent-*")
     jobs_data = []
 
@@ -396,13 +400,29 @@ async def list_all_jobs() -> dict:
 
         # 1. ADD THIS LOGIC: Check all child tasks for this parent
         child_ids = redis_conn.smembers(f"members:{p_id}")
+        
         all_done = True
-        for c_id in child_ids:
-            t = tasks_queue.fetch_job(c_id.decode())
-            # If any child is missing or not finished, the parent is still "STARTED"
-            if not t or t.get_status() != 'finished':
-                all_done = False
-                break
+        child_tasks = [tasks_queue.fetch_job(c_id.decode()) for c_id in child_ids]
+        all_children_are_none = all(x is None for x in child_tasks)
+        if all_children_are_none is True:
+            all_done = True
+        else:
+            for c_id in child_ids:
+                t = tasks_queue.fetch_job(c_id.decode())
+                # If any child is missing or not finished, the parent is still "STARTED"
+                print(f"{t=}")
+                if not t or t.get_status() != 'finished':
+                    all_done = False
+                    break
+        
+        # this sets the ended_at time for the parent job when all children are done
+        # so the frontend can display it as finished
+        ended_at = meta_decoded.get('ended_at', "")
+        print(f"Parent {p_id} - all_done: {all_done}, current ended_at: {ended_at}")
+        if all_done and ended_at == "":
+            print(f"All child tasks for parent {p_id} are done. Marking parent as finished.")
+            ended_at = datetime.datetime.now().isoformat()
+            redis_conn.hset(f"metadata:{p_id}", "ended_at", ended_at)
 
         # 2. SATISFY THE MOCK: Use the parent ID for the folder lookup
         class MockJob:
@@ -413,6 +433,7 @@ async def list_all_jobs() -> dict:
         rendered = count_rendered_frames(meta_decoded.get('project'), meta_decoded.get('scene'), meta_decoded)
         total = int(meta_decoded.get('total_frames', 0))    
         status = "FINISHED" if rendered >= total else "STARTED"
+        ended_at = meta_decoded.get('ended_at', "")
 
         # 3. NOW all_done is defined and safe to use
         jobs_data.append({
@@ -420,6 +441,8 @@ async def list_all_jobs() -> dict:
             "project": meta_decoded.get('project'),
             "scene": meta_decoded.get('scene'),
             "status": status,
+            "started_at": meta_decoded.get('started_at'), 
+            "ended_at": ended_at,                  
             "rendered_frames": rendered,
             "frames": f"1-{total}"
         })
